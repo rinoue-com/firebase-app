@@ -7,129 +7,139 @@
 <body>
 
 <!-- コンテンツ表示画面 -->
-
 <div>
     <div> 名前：<input type="text" id="uname"> </div>
     <div>
         <textarea id="text" cols="30" rows="10"></textarea>
         <button id="send">送信</button>
+        <button id="update" style="display:none;">更新</button>
     </div>
     <div id="output" style="overflow: auto;height: 500px; border: 1px solid red;"></div>
 </div>
 <!--/ コンテンツ表示画面 -->
 
-
-
 <!-- JQuery -->
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <!-- JQuery -->
-
 
 <!--** 以下Firebase **-->
 <script type="module">
     // Import the functions you need from the SDKs you need
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getDatabase, ref, push, set, onChildAdded, remove, onChildRemoved } 
+    import { getDatabase, ref, push, set, onChildAdded, remove, update, onChildChanged } 
     from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
-    // TODO: Add SDKs for Firebase products that you want to use
-    // https://firebase.google.com/docs/web/setup#available-libraries
-  
-    // Your web app's Firebase configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyBKU1y_4gbuNo958WpGFFWGR2jNSpbd03U",
-      authDomain: "gsdemo-ae09b.firebaseapp.com",
-      projectId: "gsdemo-ae09b",
-      storageBucket: "gsdemo-ae09b.appspot.com",
-      messagingSenderId: "745932336473",
-      appId: "1:745932336473:web:5d62ebf6d86b68c1113048"
-    };
-  
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app); //RealtimeDBに接続
-    const dbRef = ref(db,"chat"); //RealtimeDB内の"chat"を使う
+    // 外部JSONファイルからFirebase設定を読み込む関数
+    async function loadFirebaseConfig() {
+        const response = await fetch('firebaseConfig.json');
+        const firebaseConfig = await response.json();
+        return firebaseConfig;
+    }
 
-    //データ登録(Click)
-    $("#send").on("click",function() {
-        const msg = {
-            uname: $("#uname").val(),
-            text: $("#text").val()
-        }
-        const newPostRef = push(dbRef); //ユニークKEYを生成
-        set(newPostRef, msg);           //"chat"にユニークKEYをつけてオブジェクトデータを登録
-    });
+    // Firebaseの初期化とチャットアプリの設定
+    async function initializeChatApp() {
+        const firebaseConfig = await loadFirebaseConfig();
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const dbRef = ref(db, "chat");
 
-    //データ登録(Enter)
-    $("#text").on("keydown",function(e){
-        console.log(e);        //e変数の中身を確認！！
-        if(e.keyCode == 13){   //EnterKey=13
+        let updateKey = null;
+
+        // データ登録(Click)
+        $("#send").on("click", function() {
             const msg = {
                 uname: $("#uname").val(),
                 text: $("#text").val()
-            }
-            const newPostRef = push(dbRef); //ユニークKEYを生成
-            set(newPostRef, msg);           //"chat"にユニークKEYをつけてオブジェクトデータを登録
-        }
-    });
+            };
+            const newPostRef = push(dbRef);
+            set(newPostRef, msg);
+            $("#text").val("");
+        });
 
-    //最初にデータ取得＆onSnapshotでリアルタイムにデータを取得
-    onChildAdded(dbRef, function(data){   
-        const msg  = data.val();    //オブジェクトデータを取得し、変数msgに代入
-        const key  = data.key;      //データのユニークキー（削除や更新に使用可能）
-        //表示用テキスト・HTMLを作成
-        let h = '<p>';
+        // データ登録(Enter)
+        $("#text").on("keydown", function(e){
+            if(e.keyCode == 13){
+                const msg = {
+                    uname: $("#uname").val(),
+                    text: $("#text").val()
+                };
+                const newPostRef = push(dbRef);
+                set(newPostRef, msg);
+                $("#text").val("");
+            }
+        });
+
+        // データ更新(Click)
+        $("#update").on("click", function() {
+            if (updateKey) {
+                const updatedMsg = {
+                    uname: $("#uname").val(),
+                    text: $("#text").val()
+                };
+                const updateRef = ref(db, "chat/" + updateKey);
+                update(updateRef, updatedMsg).then(() => {
+                    // 更新が成功したら、画面上のメッセージを更新
+                    $("#" + updateKey).html(`
+                        ${updatedMsg.uname}<br>
+                        ${updatedMsg.text}<br>
+                        <button onclick="editMessage('${updateKey}', '${updatedMsg.uname}', '${updatedMsg.text}')">編集</button>
+                        <button onclick="deleteMessage('${updateKey}')">削除</button>
+                    `);
+                    updateKey = null;
+                    $("#send").show();
+                    $("#update").hide();
+                    $("#text").val("");
+                });
+            }
+        });
+
+        // 最初にデータ取得＆onSnapshotでリアルタイムにデータを取得
+        onChildAdded(dbRef, function(data){   
+            const msg = data.val();
+            const key = data.key;
+            let h = `<p id="${key}">`;
             h += msg.uname;
             h += '<br>';
             h += msg.text;
+            h += `<br><button onclick="editMessage('${key}', '${msg.uname}', '${msg.text}')">編集</button>`;
+            h += `<button onclick="deleteMessage('${key}')">削除</button>`;
             h += '</p>';
-            $("#output").append(h); //#outputの最後に追加
-        // $('#output').scrollTop($('#output')[0].scrollHeight);
-        $('#output').animate( {scrollTop: ($('#output')[0].scrollHeight)} )
-    });
-  </script>
+            $("#output").append(h);
+            $('#output').animate( {scrollTop: ($('#output')[0].scrollHeight)} );
+        });
 
+        // データ変更時に画面を更新
+        onChildChanged(dbRef, function(data) {
+            const msg = data.val();
+            const key = data.key;
+            $("#" + key).html(`
+                ${msg.uname}<br>
+                ${msg.text}<br>
+                <button onclick="editMessage('${key}', '${msg.uname}', '${msg.text}')">編集</button>
+                <button onclick="deleteMessage('${key}')">削除</button>
+            `);
+        });
 
+        // メッセージの編集
+        window.editMessage = function(key, uname, text) {
+            $("#uname").val(uname);
+            $("#text").val(text);
+            updateKey = key;
+            $("#send").hide();
+            $("#update").show();
+        };
 
+        // メッセージの削除
+        window.deleteMessage = function(key) {
+            const deleteRef = ref(db, "chat/" + key);
+            remove(deleteRef);
+            $("#" + key).remove();
+        };
+    }
 
-
-
-
-
-
-
+    // チャットアプリの初期化を呼び出す
+    initializeChatApp();
+</script>
 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
