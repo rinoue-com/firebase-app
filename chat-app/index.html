@@ -33,6 +33,7 @@
         display: flex;
         flex-direction: column;
         margin-bottom: 20px;
+        padding-right: 10px; /* 右側の余白を追加 */
     }
     .input-container div {
         margin-bottom: 10px;
@@ -41,6 +42,7 @@
         width: 100%;
         padding: 10px;
         font-size: 16px;
+        box-sizing: border-box;
     }
     .input-container button {
         align-self: flex-end;
@@ -54,6 +56,7 @@
         padding: 10px;
         background-color: #f9f9f9;
         margin-bottom: 20px;
+        padding-right: 10px; /* 右側の余白を追加 */
     }
     .chat-bubble {
         max-width: 70%;
@@ -62,14 +65,15 @@
         border-radius: 10px;
         background-color: #e0e0e0;
         word-wrap: break-word;
+        position: relative;
     }
     .chat-bubble.self {
-        margin-left: 0;
-        background-color: #e0e0e0;
+        margin-left: auto;
+        background-color: #d4edda; /* 自分のメッセージを薄い緑に */
     }
     .chat-bubble.other {
-        margin-left: auto;
-        background-color: #d4edda;
+        margin-right: auto;
+        background-color: #e0e0e0;
     }
     .chat-bubble p {
         margin: 0;
@@ -80,6 +84,20 @@
     }
     .chat-bubble .msg-text {
         white-space: pre-wrap;
+    }
+    .chat-bubble .timestamp {
+        font-size: 10px;
+        color: #888;
+        position: absolute;
+        bottom: 5px;
+        right: 10px;
+    }
+    .chat-bubble .edited {
+        font-size: 10px;
+        color: #888;
+        position: absolute;
+        top: 5px;
+        right: 10px;
     }
     #editWindow, #deleteConfirm {
         display: none;
@@ -170,6 +188,12 @@
         return str.replace(/<br>/g, '\n');
     }
 
+    // 現在の日時をフォーマットして返す関数
+    function getFormattedDate() {
+        const now = new Date();
+        return `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${now.getMinutes()}`;
+    }
+
     // 名前をローカルストレージに保存する関数
     function saveName(name) {
         localStorage.setItem('chatUsername', name);
@@ -222,7 +246,8 @@
                 alert("名前とメッセージを入力してください。");
                 return;
             }
-            const msg = { uname, text };
+            const timestamp = getFormattedDate();
+            const msg = { uname, text, timestamp };
             const newPostRef = push(dbRef);
             set(newPostRef, msg);
             $("#text").val("");
@@ -238,7 +263,8 @@
                     alert("名前とメッセージを入力してください。");
                     return;
                 }
-                const msg = { uname, text };
+                const timestamp = getFormattedDate();
+                const msg = { uname, text, timestamp };
                 const newPostRef = push(dbRef);
                 set(newPostRef, msg);
                 $("#text").val("");
@@ -253,12 +279,15 @@
                 return;
             }
             if (updateKey) {
-                const updatedMsg = { text };
+                const updatedMsg = { text, edited: true };
                 const updateRef = ref(db, "chat/" + updateKey);
                 update(updateRef, updatedMsg).then(() => {
-                    // 更新が成功したら、画面上のメッセージを更新
+                    // 画面上のメッセージを更新
                     $("#" + updateKey + " .msg-text").html(nl2br(updatedMsg.text));
-                    updateKey = null;
+                    // 「編集済」を即時反映
+                    if ($("#" + updateKey + " .edited").length === 0) {
+                        $("#" + updateKey).append('<span class="edited">編集済</span>');
+                    }
                     $("#editWindow").hide();
                 });
             }
@@ -297,13 +326,17 @@
             let h = `<div id="${key}" class="${bubbleClass}">`;
             h += `<p class="uname">${msg.uname}</p>`;
             h += `<p class="msg-text">${nl2br(msg.text)}</p>`;
+            h += `<span class="timestamp">${msg.timestamp}</span>`;
+            if (msg.edited) {
+                h += `<span class="edited">編集済</span>`;
+            }
             if (isSelf) {
                 h += `<button onclick="editMessage('${key}')">編集</button>`;
                 h += `<button onclick="confirmDelete('${key}')">削除</button>`;
             }
             h += '</div>';
             $("#output").append(h);
-            $('#output').animate( {scrollTop: ($('#output')[0].scrollHeight)}, 10 );
+            $('#output').animate( {scrollTop: ($('#output')[0].scrollHeight)}, 200 );
         });
 
         // データ変更時に画面を更新
@@ -311,6 +344,9 @@
             const msg = data.val();
             const key = data.key;
             $("#" + key + " .msg-text").html(nl2br(msg.text));
+            if (msg.edited && $("#" + key + " .edited").length === 0) {
+                $("#" + key).append('<span class="edited">編集済</span>');
+            }
         });
 
         // データ削除時に画面を更新
