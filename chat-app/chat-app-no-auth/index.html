@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<title>Chatアプリ（Google認証版）</title>
+<title>Firebase:v9:Chatアプリ</title>
 <style>
     body {
         font-family: Arial, sans-serif;
@@ -33,7 +33,7 @@
         display: flex;
         flex-direction: column;
         margin-bottom: 20px;
-        padding-right: 10px;
+        padding-right: 10px; /* 右側の余白を追加 */
     }
     .input-container div {
         margin-bottom: 10px;
@@ -56,7 +56,7 @@
         padding: 10px;
         background-color: #f9f9f9;
         margin-bottom: 20px;
-        padding-right: 10px;
+        padding-right: 10px; /* 右側の余白を追加 */
     }
     .chat-bubble {
         max-width: 70%;
@@ -69,7 +69,7 @@
     }
     .chat-bubble.self {
         margin-left: auto;
-        background-color: #d4edda;
+        background-color: #d4edda; /* 自分のメッセージを薄い緑に */
     }
     .chat-bubble.other {
         margin-right: auto;
@@ -121,39 +121,18 @@
     #deleteConfirm p {
         word-break: break-all;
     }
-    #login-screen {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100vh;
-    }
-    #chat-screen {
-        display: none;
-    }
-    #logout {
-        align-self: flex-end;
-        padding: 10px 20px;
-        font-size: 16px;
-        margin-top: 10px;
-    }
 </style>
 </head>
 <body>
 
-<!-- ログイン画面 -->
-<div id="login-screen">
-    <button id="login">Googleアカウントでログイン</button>
-</div>
-
-<!-- チャット画面 -->
-<div id="chat-screen" class="container">
+<div class="container">
     <h1>チャットアプリ</h1>
-    <button id="logout">ログアウト</button>
 
     <!-- コンテンツ表示画面 -->
     <div class="input-container">
         <div>
             名前：<input type="text" id="uname" disabled>
+            <button id="changeName">変更</button>
         </div>
         <div>
             <textarea id="text" rows="5"></textarea>
@@ -183,14 +162,16 @@
 
 <!-- JQuery -->
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-<!-- Firebase SDK -->
-<script type="module">
-    // Firebaseモジュールのインポート
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-    import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-    import { getDatabase, ref, push, set, onChildAdded, remove, update, onChildChanged, onChildRemoved } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+<!-- JQuery -->
 
-    // 外部JSONファイルからFirebaseの設定を読み込む関数
+<!--** 以下Firebase **-->
+<script type="module">
+    // Import the functions you need from the SDKs you need
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import { getDatabase, ref, push, set, onChildAdded, remove, update, onChildChanged, onChildRemoved } 
+    from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+
+    // 外部JSONファイルからFirebase設定を読み込む関数
     async function loadFirebaseConfig() {
         const response = await fetch('firebaseConfig.json');
         const firebaseConfig = await response.json();
@@ -213,88 +194,77 @@
         return `${now.getFullYear()}/${now.getMonth() + 1}/${now.getDate()} ${now.getHours()}:${now.getMinutes()}`;
     }
 
+    // 名前をローカルストレージに保存する関数
+    function saveName(name) {
+        localStorage.setItem('chatUsername', name);
+    }
+
+    // ローカルストレージから名前を取得する関数
+    function getName() {
+        return localStorage.getItem('chatUsername');
+    }
+
     // Firebaseの初期化とチャットアプリの設定
     async function initializeChatApp() {
         const firebaseConfig = await loadFirebaseConfig();
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth(app);
         const db = getDatabase(app);
         const dbRef = ref(db, "chat");
 
         let updateKey = null;
         let deleteKey = null;
 
-        // Google認証プロバイダ
-        const provider = new GoogleAuthProvider();
+        // ローカルストレージから名前を読み込み、設定する
+        const savedName = getName();
+        if (savedName) {
+            $("#uname").val(savedName);
+        }
 
-        // Googleログイン処理
-        document.getElementById('login').addEventListener('click', () => {
-            signInWithPopup(auth, provider)
-                .then((result) => {
-                    const user = result.user;
-                    document.getElementById('uname').value = user.displayName;
-                    document.getElementById('login-screen').style.display = 'none';
-                    document.getElementById('chat-screen').style.display = 'flex';
-                })
-                .catch((error) => {
-                    console.error(error);
-                });
-        });
-
-        // 認証状態の変化を監視
-        onAuthStateChanged(auth, (user) => {
-            if (user) {
-                document.getElementById('uname').value = user.displayName;
-                document.getElementById('login-screen').style.display = 'none';
-                document.getElementById('chat-screen').style.display = 'flex';
+        // 名前変更ボタンのクリックイベント
+        $("#changeName").on("click", function() {
+            const isDisabled = $("#uname").prop("disabled");
+            if (isDisabled) {
+                $("#uname").prop("disabled", false);
+                $("#changeName").text("保存");
             } else {
-                document.getElementById('chat-screen').style.display = 'none';
-                document.getElementById('login-screen').style.display = 'flex';
+                const newName = $("#uname").val().trim();
+                if (newName === "") {
+                    alert("名前を入力してください。");
+                    return;
+                }
+                saveName(newName);
+                $("#uname").prop("disabled", true);
+                $("#changeName").text("変更");
             }
         });
 
-        // ログアウト処理
-        document.getElementById('logout').addEventListener('click', () => {
-            signOut(auth).then(() => {
-                console.log('User signed out');
-                document.getElementById('chat-screen').style.display = 'none';
-                document.getElementById('login-screen').style.display = 'flex';
-            }).catch((error) => {
-                console.error(error);
-            });
-        });
-
-        // データ登録(クリック)
+        // データ登録(Click)
         $("#send").on("click", function() {
-            const user = auth.currentUser;
-            const uname = user.displayName;
-            const uid = user.uid;
+            const uname = $("#uname").val().trim();
             const text = $("#text").val().trim();
-            if (text === "") {
-                alert("メッセージを入力してください。");
+            if (uname === "" || text === "") {
+                alert("名前とメッセージを入力してください。");
                 return;
             }
             const timestamp = getFormattedDate();
-            const msg = { uname, uid, text, timestamp };
+            const msg = { uname, text, timestamp };
             const newPostRef = push(dbRef);
             set(newPostRef, msg);
             $("#text").val("");
         });
 
-        // データ登録(Enterキー)
+        // データ登録(Enter)
         $("#text").on("keydown", function(e){
             if(e.keyCode == 13 && !e.shiftKey){
                 e.preventDefault();
-                const user = auth.currentUser;
-                const uname = user.displayName;
-                const uid = user.uid;
+                const uname = $("#uname").val().trim();
                 const text = $("#text").val().trim();
-                if (text === "") {
-                    alert("メッセージを入力してください。");
+                if (uname === "" || text === "") {
+                    alert("名前とメッセージを入力してください。");
                     return;
                 }
                 const timestamp = getFormattedDate();
-                const msg = { uname, uid, text, timestamp };
+                const msg = { uname, text, timestamp };
                 const newPostRef = push(dbRef);
                 set(newPostRef, msg);
                 $("#text").val("");
@@ -350,8 +320,8 @@
         onChildAdded(dbRef, function(data){   
             const msg = data.val();
             const key = data.key;
-            const user = auth.currentUser;
-            const isSelf = user && user.uid === msg.uid;
+            const savedName = getName();
+            const isSelf = savedName === msg.uname;
             const bubbleClass = isSelf ? 'chat-bubble self' : 'chat-bubble other';
             let h = `<div id="${key}" class="${bubbleClass}">`;
             h += `<p class="uname">${msg.uname}</p>`;
@@ -366,7 +336,7 @@
             }
             h += '</div>';
             $("#output").append(h);
-            $('#output').animate( {scrollTop: ($('#output')[0].scrollHeight)}, 10 );
+            $('#output').animate( {scrollTop: ($('#output')[0].scrollHeight)}, 200 );
         });
 
         // データ変更時に画面を更新
