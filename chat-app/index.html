@@ -66,14 +66,22 @@
         background-color: #e0e0e0;
         word-wrap: break-word;
         position: relative;
+        display: flex;
+        align-items: flex-start;
+    }
+    .chat-bubble img {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-right: 10px;
     }
     .chat-bubble.self {
         margin-left: auto;
         background-color: #d4edda;
+        /* flex-direction: row-reverse; */
     }
-    .chat-bubble.other {
-        margin-right: auto;
-        background-color: #e0e0e0;
+    .chat-bubble.self img {
+        display: none;
     }
     .chat-bubble p {
         margin: 0;
@@ -84,18 +92,19 @@
     }
     .chat-bubble .msg-text {
         white-space: pre-wrap;
+        padding-right: 50px; /* 日付が被らないようにするための余白 */
     }
-    .chat-bubble .timestamp {
-        font-size: 10px;
-        color: #888;
-        position: absolute;
-        bottom: 5px;
-        right: 10px;
-    }
+    .chat-bubble .timestamp,
     .chat-bubble .edited {
         font-size: 10px;
         color: #888;
         position: absolute;
+    }
+    .chat-bubble .timestamp {
+        bottom: 5px;
+        right: 10px;
+    }
+    .chat-bubble .edited {
         top: 5px;
         right: 10px;
     }
@@ -354,6 +363,11 @@
             const isSelf = user && user.uid === msg.uid;
             const bubbleClass = isSelf ? 'chat-bubble self' : 'chat-bubble other';
             let h = `<div id="${key}" class="${bubbleClass}">`;
+            if (!isSelf) {
+                const userPhotoURL = auth.currentUser.photoURL;
+                h += `<img src="${userPhotoURL}" alt="icon">`;
+            }
+            h += `<div>`;
             h += `<p class="uname">${msg.uname}</p>`;
             h += `<p class="msg-text">${nl2br(msg.text)}</p>`;
             h += `<span class="timestamp">${msg.timestamp}</span>`;
@@ -364,7 +378,7 @@
                 h += `<button onclick="editMessage('${key}')">編集</button>`;
                 h += `<button onclick="confirmDelete('${key}')">削除</button>`;
             }
-            h += '</div>';
+            h += `</div></div>`;
             $("#output").append(h);
             $('#output').animate( {scrollTop: ($('#output')[0].scrollHeight)}, 10 );
         });
