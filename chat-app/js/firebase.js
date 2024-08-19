@@ -1,7 +1,7 @@
 // Firebaseモジュールのインポート
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-import { getDatabase, get, ref, push, set, onChildAdded, remove, update, onChildChanged, onChildRemoved, query, orderByChild } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
+import { getDatabase, ref, push, set, onChildAdded, remove, update, onChildChanged, onChildRemoved, get } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-database.js";
 
 // 改行を <br> に変換する関数
 function nl2br(str) {
@@ -20,6 +20,21 @@ function getFormattedDate() {
     return `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
 }
 
+// ユーザー情報キャッシュ用のオブジェクト
+const userCache = {};
+
+// ユーザー情報をキャッシュする関数
+async function cacheUserInfo(db) {
+    const usersRef = ref(db, 'users');
+    const snapshot = await get(usersRef);
+    if (snapshot.exists()) {
+        snapshot.forEach(userSnapshot => {
+            const userInfo = userSnapshot.val();
+            userCache[userInfo.uid] = userInfo;
+        });
+    }
+}
+
 // Firebaseの初期化とチャットアプリの設定
 async function initializeChatApp() {
     const firebaseConfig = await fetch('firebaseConfig.json').then(response => response.json());
@@ -33,6 +48,9 @@ async function initializeChatApp() {
 
     // Google認証プロバイダ
     const provider = new GoogleAuthProvider();
+
+    // ユーザー情報をキャッシュ
+    await cacheUserInfo(db);
 
     // Googleログイン処理
     document.getElementById('login').addEventListener('click', () => {
@@ -50,14 +68,17 @@ async function initializeChatApp() {
                     const existingData = userSnapshot.val();
                     if (existingData.uname !== user.displayName) {
                         await update(userRef, { uname: user.displayName });
+                        userCache[user.uid].uname = user.displayName; // キャッシュも更新
                         console.log('ユーザー名を更新しました:', user.displayName);
                     }
                 } else {
-                    await set(userRef, {
+                    const userInfo = {
                         uid: user.uid,
                         uname: user.displayName,
                         photoURL: user.photoURL
-                    });
+                    };
+                    await set(userRef, userInfo);
+                    userCache[user.uid] = userInfo; // キャッシュに追加
                     console.log('ユーザー情報を保存しました:', user.displayName);
                 }
             })
@@ -92,9 +113,7 @@ async function initializeChatApp() {
     // データ登録(クリック)
     $("#send").on("click", async function() {
         const user = auth.currentUser;
-        const userRef = ref(db, 'users/' + user.uid);
-        const userSnapshot = await get(userRef);
-        const uname = userSnapshot.val().uname;
+        const uname = userCache[user.uid].uname;
         const uid = user.uid;
         const text = $("#text").val().trim();
         if (text === "") {
@@ -113,9 +132,7 @@ async function initializeChatApp() {
         if(e.keyCode == 13 && !e.shiftKey){
             e.preventDefault();
             const user = auth.currentUser;
-            const userRef = ref(db, 'users/' + user.uid);
-            const userSnapshot = await get(userRef);
-            const uname = userSnapshot.val().uname;
+            const uname = userCache[user.uid].uname;
             const uid = user.uid;
             const text = $("#text").val().trim();
             if (text === "") {
@@ -175,16 +192,8 @@ async function initializeChatApp() {
         }
     });
 
-    // 他のユーザーの情報を取得する関数
-    async function getUserInfo(uid) {
-        const userRef = ref(db, `users/${uid}`);
-        const userSnapshot = await get(userRef);
-        return userSnapshot.exists() ? userSnapshot.val() : null;
-    }
-
     // 最初にデータ取得＆onSnapshotでリアルタイムにデータを取得
-    const chatQuery = query(dbRef, orderByChild('timestamp'));
-    onChildAdded(chatQuery, async function(data){   
+    onChildAdded(dbRef, function(data){   
         const msg = data.val();
         const key = data.key;
         const user = auth.currentUser;
@@ -192,7 +201,7 @@ async function initializeChatApp() {
         const bubbleClass = isSelf ? 'chat-bubble self' : 'chat-bubble other';
         let h = `<div id="${key}" class="${bubbleClass}">`;
         if (!isSelf) {
-            const userInfo = await getUserInfo(msg.uid);
+            const userInfo = userCache[msg.uid];
             if (userInfo && userInfo.photoURL) {
                 h += `<img src="${userInfo.photoURL}" alt="icon">`;
             }
@@ -217,7 +226,7 @@ async function initializeChatApp() {
     });
 
     // データ変更時に画面を更新
-    onChildChanged(chatQuery, function(data) {
+    onChildChanged(dbRef, function(data) {
         const msg = data.val();
         const key = data.key;
         $("#" + key + " .msg-text").html(nl2br(msg.text));
@@ -227,7 +236,7 @@ async function initializeChatApp() {
     });
 
     // データ削除時に画面を更新
-    onChildRemoved(chatQuery, function(data) {
+    onChildRemoved(dbRef, function(data) {
         const key = data.key;
         $("#" + key).remove();
     });
